@@ -1,0 +1,14 @@
+﻿"use client";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { ApiError, apiRequest, ApiPage } from "../../lib/api-client";
+type Notification = { id: string; title: string; body: string; href: string | null; readAt: string | null; createdAt: string };
+type NotificationPage = ApiPage<Notification> & { unread: number };
+export default function NotificationsView() {
+  const [items, setItems] = useState<Notification[]>([]); const [unread, setUnread] = useState(0); const [loading, setLoading] = useState(true); const [busyId, setBusyId] = useState(""); const [error, setError] = useState("");
+  const load = useCallback(async () => { setLoading(true); setError(""); try { const page = await apiRequest<NotificationPage>("notifications?limit=50"); setItems(page.data); setUnread(page.unread); } catch (cause) { setError(cause instanceof ApiError && cause.status === 403 ? "You do not have permission to read notifications." : cause instanceof Error ? cause.message : "Could not load notifications."); } finally { setLoading(false); } }, []);
+  useEffect(() => { void load(); }, [load]);
+  async function markRead(id: string) { setBusyId(id); setError(""); try { await apiRequest(`notifications/${id}/read`, { method: "PATCH" }); setItems(old => old.map(item => item.id === id ? { ...item, readAt: new Date().toISOString() } : item)); setUnread(old => Math.max(0, old - 1)); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not update notification."); } finally { setBusyId(""); } }
+  return <div className="workspace-page"><header className="workspace-heading"><div><p className="eyebrow">UPDATES</p><h1>Notifications</h1><p>{unread ? `${unread} unread notification${unread === 1 ? "" : "s"}` : "You’re up to date."}</p></div></header>{error && <div className="feedback error" role="alert">{error}</div>}<section className="notification-list" aria-live="polite">{loading ? <p className="state-message">Loading notifications…</p> : items.length === 0 ? <div className="settings-card"><h2>You’re all caught up</h2><p className="muted-copy">There are no notifications yet.</p></div> : items.map(item => <article className={`notification-item${item.readAt ? " is-read" : ""}`} key={item.id}><div><h2>{item.title}</h2><p>{item.body}</p><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time></div><div className="notification-actions">{item.href && <Link href={item.href} onClick={() => { if (!item.readAt) void markRead(item.id); }}>Open</Link>}{!item.readAt && <button className="secondary-button" disabled={busyId === item.id} onClick={() => void markRead(item.id)}>{busyId === item.id ? "Saving…" : "Mark as read"}</button>}</div></article>)}</section></div>;
+}
+

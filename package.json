@@ -1,0 +1,23 @@
+{
+    "name":  "logistic-management-system",
+    "private":  true,
+    "workspaces":  [
+                       "frontend",
+                       "backend"
+                   ],
+    "scripts":  {
+                    "dev":  "concurrently -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
+                    "dev:api":  "npm --workspace @lms/api run start:dev",
+                    "dev:web":  "npm --workspace @lms/web run dev",
+                    "build":  "npm run build --workspace @lms/api \u0026\u0026 npm run build --workspace @lms/web",
+                    "db:up":  "docker compose up -d postgres",
+                    "db:down":  "docker compose down",
+                    "db:migrate":  "npm --workspace @lms/api exec prisma migrate dev",
+                    "db:generate":  "npm --workspace @lms/api exec prisma generate",
+                    "db:seed":  "node backend/scripts/seed-demo.cjs",
+                    "platform:admin:create":  "node backend/scripts/create-platform-admin.cjs"
+                },
+    "devDependencies":  {
+                            "concurrently":  "^9.1.2"
+                        }
+}
