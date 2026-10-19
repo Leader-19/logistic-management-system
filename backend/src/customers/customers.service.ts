@@ -56,5 +56,15 @@ export class CustomersService {
     if (!customer) throw new NotFoundException("Customer not found");
     return this.prisma.customer.update({ where: { id }, data: { isActive: false } });
   }
+
+  async bulkDeactivate(tenantId: string, actorId: string, ids: string[]) {
+    return this.prisma.$transaction(async tx => {
+      const active = await tx.customer.findMany({ where: { tenantId, id: { in: ids }, isActive: true }, select: { id: true } });
+      if (!active.length) return { deactivatedCount: 0 };
+      await tx.customer.updateMany({ where: { tenantId, id: { in: active.map(customer => customer.id) }, isActive: true }, data: { isActive: false } });
+      await tx.auditLog.createMany({ data: active.map(customer => ({ tenantId, actorId, action: "customers.deactivated", targetType: "customer", targetId: customer.id, metadata: { source: "bulk_action" } })) });
+      return { deactivatedCount: active.length };
+    });
+  }
 }
 

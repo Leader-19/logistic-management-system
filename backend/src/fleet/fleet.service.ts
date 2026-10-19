@@ -1,13 +1,19 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
+import { PaginationDto, paginate } from "../common/dto/pagination.dto";
 
 @Injectable()
 export class FleetService {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(tenantId: string) {
-    return this.prisma.vehicle.findMany({ where: { tenantId }, orderBy: [{ status: "asc" }, { registration: "asc" }] });
+  async list(tenantId: string, query: PaginationDto) {
+    const where = { tenantId };
+    const [data, total] = await Promise.all([
+      this.prisma.vehicle.findMany({ where, orderBy: [{ status: "asc" }, { registration: "asc" }], skip: query.skip, take: query.limit }),
+      this.prisma.vehicle.count({ where }),
+    ]);
+    return paginate(data, total, query);
   }
 
   async create(tenantId: string, actorId: string, input: { registration: string; vehicleType: string; make?: string; model?: string; capacityKg?: number; notes?: string }) {

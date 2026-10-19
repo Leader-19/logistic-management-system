@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import LogoutButton from "../ui/LogoutButton";
+import MenuIcon from "../ui/MenuIcon";
 
 type Profile = { fullName?: string; email?: string; avatarUrl?: string | null };
 
@@ -18,11 +19,13 @@ export default async function PlatformSidebar() {
   const initials = profile?.fullName?.split(" ").filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "PA";
 
   return <aside className="platform-sidebar">
-    <Link className="platform-brand" href="/platform"><span className="platform-brand-mark">L</span><span>Fleetwise<small>PLATFORM ADMIN</small></span></Link>
+    <Link className="platform-brand" href="/platform"><span className="platform-brand-mark">L</span><span>LMS Portal<small>PLATFORM ADMIN</small></span></Link>
     <div className="platform-sidebar-label">CONTROL CENTER</div>
     <nav className="platform-sidebar-nav" aria-label="Platform administration">
-      <Link href="/platform"><span>▦</span>Overview</Link>
-      <Link href="/platform/profile"><span>♙</span>Admin profile</Link>
+      <Link href="/platform"><span className="nav-icon"><MenuIcon name="overview" /></span>Overview</Link>
+      <Link href="/platform/tenants"><span className="nav-icon"><MenuIcon name="branches" /></span>Tenants</Link>
+      <Link href="/platform/billing"><span className="nav-icon"><MenuIcon name="invoices" /></span>Plans & billing</Link>
+      <Link href="/platform/profile"><span className="nav-icon"><MenuIcon name="profile" /></span>Admin profile</Link>
     </nav>
     <div className="platform-sidebar-footer">
       <Link className="platform-admin-card" href="/platform/profile">

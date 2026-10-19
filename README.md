@@ -25,5 +25,5 @@ The dashboard is at `http://localhost:3000`, the API health check is at `http://
 - `POST /api/v1/auth/login`: verify the account and issue a one-hour bearer token.
 - `GET /api/v1/tenant/context`: requires the bearer token and an `x-tenant-id` matching an active membership; role permission is checked on the server.
 
-Passwords are stored as salted PBKDF2 hashes. The dashboard still displays sample data. Customer and shipment endpoints, custom tenant roles, invitations, subscription entitlements, and full audit coverage remain to be implemented before operational use. The current fixed role permissions are an initial baseline, not a substitute for the tenant-configurable RBAC in the requirements.
+Passwords are stored as salted PBKDF2 hashes. The dashboard still displays sample data. Customer and shipment workflows, custom tenant roles, and full audit coverage remain to be completed before operational use. SaaS seat plans and Stripe subscription checkout are available after platform plans and Stripe credentials are configured. The current fixed role permissions are an initial baseline, not a substitute for the tenant-configurable RBAC in the requirements.
 

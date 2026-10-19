@@ -4,13 +4,15 @@ import { PrismaService } from "../common/prisma.service";
 import { PaginationDto, paginate } from "../common/dto/pagination.dto";
 import { ProductsService } from "../products/products.service";
 import { WarehouseRepository } from "./repositories/warehouse.repository";
+import { WarehouseInventoryQueryDto, WarehouseMovementQueryDto } from "./dto/warehouse.dto";
 
 @Injectable()
 export class WarehouseService {
   constructor(private readonly prisma: PrismaService, private readonly products: ProductsService, private readonly repository: WarehouseRepository) {}
 
-  list(tenantId: string) {
-    return this.repository.list(tenantId);
+  async list(tenantId: string, query: PaginationDto) {
+    const result = await this.repository.list(tenantId, query);
+    return paginate(result.data, result.total, query);
   }
 
   async create(tenantId: string, input: { name: string; address?: string }) {
@@ -21,15 +23,16 @@ export class WarehouseService {
     }
   }
 
-  async inventory(tenantId: string, pagination: PaginationDto, warehouseId?: string) {
-    if (warehouseId && !await this.repository.findActive(tenantId, warehouseId)) throw new NotFoundException("Warehouse not found");
-    const result = await this.repository.inventory(tenantId, pagination, warehouseId);
-    return paginate(result.data, result.total, pagination);
+  async inventory(tenantId: string, query: WarehouseInventoryQueryDto) {
+    if (query.warehouseId && !await this.repository.findActive(tenantId, query.warehouseId)) throw new NotFoundException("Warehouse not found");
+    const result = await this.repository.inventory(tenantId, query);
+    return paginate(result.data, result.total, query);
   }
 
-  async movements(tenantId: string, pagination: PaginationDto, warehouseId?: string) {
-    const result = await this.repository.movements(tenantId, pagination, warehouseId);
-    return paginate(result.data, result.total, pagination);
+  async movements(tenantId: string, query: WarehouseMovementQueryDto) {
+    if (query.warehouseId && !await this.repository.findActive(tenantId, query.warehouseId)) throw new NotFoundException("Warehouse not found");
+    const result = await this.repository.movements(tenantId, query);
+    return paginate(result.data, result.total, query);
   }
 
   async summary(tenantId: string) {

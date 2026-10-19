@@ -17,7 +17,7 @@ const DEFAULT_PERMISSIONS: Array<{ resource: string; action: string; description
 const RESOURCES = [
   "tenants", "users", "members", "roles", "permissions", "branches",
   "customers", "shipments", "tracking", "invoices", "payments", "products", "warehouse", "fleet", "dispatch",
-  "reports", "audit", "plans", "subscriptions", "settings", "notifications",
+  "reports", "audit", "plans", "subscriptions", "settings", "notifications", "suppliers", "purchasing",
 ];
 const ACTIONS = ["create", "read", "update", "delete", "manage", "export"];
 for (const resource of RESOURCES) {
@@ -29,7 +29,7 @@ for (const resource of RESOURCES) {
     });
   }
 }
-// Extra fine-grained permissions
+// Extra fine-grained permissions 
 DEFAULT_PERMISSIONS.push(
   { resource: "shipments", action: "assign", description: "Assign shipments to drivers/carriers" },
   { resource: "shipments", action: "cancel", description: "Cancel shipments" },
@@ -41,7 +41,7 @@ DEFAULT_PERMISSIONS.push(
 
 @Injectable()
 export class AuthService implements OnModuleInit {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async updateProfile(userId: string, input: { fullName?: string; phone?: string | null }) {
     const data = {
@@ -129,18 +129,26 @@ export class AuthService implements OnModuleInit {
       this.prisma.role.findMany({ where: { tenantId: { not: null }, name: "Customer Service", isSystem: true }, select: { id: true } }),
     ]);
     const adminPermissionIds = (await this.prisma.permission.findMany({ where: { NOT: [{ resource: "plans" }, { resource: "subscriptions" }] }, select: { id: true } })).map(permission => permission.id);
-    const opsPermissionIds = (await this.prisma.permission.findMany({ where: { OR: [
-      { resource: { in: ["tenants", "customers", "shipments", "tracking", "branches", "reports", "products", "warehouse", "dispatch", "fleet", "notifications"] }, action: { in: ["create", "read", "update", "export"] } },
-      { resource: "shipments", action: "assign" },
-      { resource: "warehouse.stock", action: "adjust" },
-    ] }, select: { id: true } })).map(permission => permission.id);
+    const opsPermissionIds = (await this.prisma.permission.findMany({
+      where: {
+        OR: [
+          { resource: { in: ["tenants", "customers", "shipments", "tracking", "branches", "reports", "products", "warehouse", "dispatch", "fleet", "notifications"] }, action: { in: ["create", "read", "update", "export"] } },
+          { resource: "shipments", action: "assign" },
+          { resource: "warehouse.stock", action: "adjust" },
+        ]
+      }, select: { id: true }
+    })).map(permission => permission.id);
     const financePermissionIds = (await this.prisma.permission.findMany({ where: { resource: { in: ["tenants", "customers", "shipments", "invoices", "payments", "reports", "settlements", "notifications"] } }, select: { id: true } })).map(permission => permission.id);
-    const driverPermissionIds = (await this.prisma.permission.findMany({ where: { OR: [
-      { resource: "shipments", action: "read" },
-      { resource: "tracking", action: { in: ["read", "create"] } },
-      { resource: "delivery", action: "proof.create" },
-      { resource: "notifications", action: { in: ["read", "update"] } },
-    ] }, select: { id: true } })).map(permission => permission.id);
+    const driverPermissionIds = (await this.prisma.permission.findMany({
+      where: {
+        OR: [
+          { resource: "shipments", action: "read" },
+          { resource: "tracking", action: { in: ["read", "create"] } },
+          { resource: "delivery", action: "proof.create" },
+          { resource: "notifications", action: { in: ["read", "update"] } },
+        ]
+      }, select: { id: true }
+    })).map(permission => permission.id);
     const grants = [
       ...ownerRoles.flatMap(role => permissions.map(permission => ({ roleId: role.id, permissionId: permission.id }))),
       ...adminRoles.flatMap(role => adminPermissionIds.map(permissionId => ({ roleId: role.id, permissionId }))),

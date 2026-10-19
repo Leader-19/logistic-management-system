@@ -2,6 +2,8 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { showToast } from "./toast";
 
 type Mode = "login" | "register";
 type Membership = { tenantId: string; tenantName: string; tenantStatus: string };
@@ -12,7 +14,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function chooseTenant(tenantId: string) {
+  async function chooseTenant(tenantId: string, successMessage = mode === "register" ? "Workspace created successfully." : "Signed in successfully.") {
     setError("");
     setBusy(true);
     try {
@@ -27,6 +29,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
         setBusy(false);
         return;
       }
+      showToast(successMessage);
       router.replace("/");
       router.refresh();
     } catch {
@@ -60,6 +63,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
         return;
       }
       if (data && typeof data === "object" && "platformAdmin" in data && data.platformAdmin === true) {
+        showToast("Signed in successfully.");
         router.replace("/platform");
         router.refresh();
         return;
@@ -86,8 +90,17 @@ export default function AuthForm({ mode }: { mode: Mode }) {
 
   return (
     <main className="auth-shell">
-      <section className="auth-card" aria-labelledby="auth-title">
-        <a className="auth-brand" href="/">FLEETWISE<span>.</span></a>
+      <div className="auth-layout">
+        <aside className="auth-visual" aria-label="LMS Portal logistics operations">
+          <Image src="/image.jpg" alt="LMS Portal logistics operations" fill priority sizes="(max-width: 800px) 100vw, 50vw" className="auth-visual-image" />
+          <div className="auth-visual-overlay">
+            <span className="auth-visual-kicker">LMS PORTAL</span>
+            <h2>Every delivery, moving forward.</h2>
+            <p>Bring your team, shipments, and operations together in one workspace.</p>
+          </div>
+        </aside>
+        <section className="auth-card" aria-labelledby="auth-title">
+        <a className="auth-brand" href="/">LMS PORTAL<span>.</span></a>
         {memberships ? (
           <>
             <p className="auth-eyebrow">WORKSPACE ACCESS</p>
@@ -95,7 +108,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
             <p className="auth-description">Select the company you want to work in.</p>
             <div className="workspace-options">
               {memberships.map((membership) => (
-                <button className="workspace-option" key={membership.tenantId} onClick={() => void chooseTenant(membership.tenantId)} disabled={busy}>
+                <button className="workspace-option" key={membership.tenantId} onClick={() => void chooseTenant(membership.tenantId, "Signed in successfully.")} disabled={busy}>
                   <span className="workspace-badge">{membership.tenantName.slice(0, 1).toUpperCase()}</span>
                   <span>{membership.tenantName}</span>
                   <span className="workspace-arrow">→</span>
@@ -118,12 +131,13 @@ export default function AuthForm({ mode }: { mode: Mode }) {
               {error && <p className="auth-error" role="alert">{error}</p>}
               <button className="auth-submit" type="submit" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create workspace"}</button>
             </form>
-            <p className="auth-switch">{mode === "login" ? "New to Fleetwise? " : "Already have an account? "}<a href={mode === "login" ? "/register" : "/login"}>{mode === "login" ? "Create a workspace" : "Sign in"}</a></p>
+            <p className="auth-switch">{mode === "login" ? "New to LMS Portal? " : "Already have an account? "}<a href={mode === "login" ? "/register" : "/login"}>{mode === "login" ? "Create a workspace" : "Sign in"}</a></p>
           </>
         )}
         {memberships && error && <p className="auth-error" role="alert">{error}</p>}
-      </section>
-      <p className="auth-footer">Secure, tenant-scoped logistics operations</p>
+        </section>
+      </div>
+      <p className="auth-footer">Developed by DIN Leader · Secure, tenant-scoped logistics operations</p>
     </main>
   );
 }

@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import { IsIn, IsNumber, IsOptional, IsString, Length, Max, MaxLength, Min } from "class-validator";
 import { AuthGuard, PermissionGuard, RequirePermissions, TenantGuard } from "../common/guards";
 import { AuthenticatedRequest } from "../common/interfaces";
+import { PaginationDto } from "../common/dto/pagination.dto";
 import { FleetService } from "./fleet.service";
 
 class CreateVehicleDto {
@@ -32,7 +33,7 @@ export class FleetController {
 
   @Get()
   @RequirePermissions("fleet.read")
-  list(@Req() req: AuthenticatedRequest) { return this.fleet.list(req.tenantId); }
+  list(@Req() req: AuthenticatedRequest, @Query() query: PaginationDto) { return this.fleet.list(req.tenantId, query); }
 
   @Post()
   @RequirePermissions("fleet.create")

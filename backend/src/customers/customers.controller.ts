@@ -4,6 +4,7 @@ import { IsBoolean, IsOptional, IsString, Length } from "class-validator";
 import { AuthGuard, TenantGuard, PermissionGuard, RequirePermissions } from "../common/guards";
 import { AuthenticatedRequest } from "../common/interfaces";
 import { PaginationDto } from "../common/dto/pagination.dto";
+import { BulkRecordIdsDto } from "../common/dto/bulk-record-ids.dto";
 import { CustomersService } from "./customers.service";
 
 class CreateCustomerDto {
@@ -47,6 +48,13 @@ export class CustomersController {
   @ApiQuery({ name: "search", required: false })
   findAll(@Req() req: AuthenticatedRequest, @Query() query: PaginationDto, @Query("search") search?: string) {
     return this.service.findAll(req.tenantId, query, search);
+  }
+
+  @Post("bulk/deactivate")
+  @RequirePermissions("customers.delete")
+  @ApiOperation({ summary: "Deactivate up to 100 customers in the current tenant" })
+  bulkDeactivate(@Req() req: AuthenticatedRequest, @Body() body: BulkRecordIdsDto) {
+    return this.service.bulkDeactivate(req.tenantId, req.user.sub, body.ids);
   }
 
   @Get(":id")

@@ -6,6 +6,8 @@ import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
+import { createRateLimitMiddleware } from "./common/rate-limit.middleware";
+import { createRequestContextMiddleware } from "./common/request-context.middleware";
 
 config({ path: resolve(__dirname, "../../.env") });
 
@@ -15,7 +17,9 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
-  app.useBodyParser("json", { limit: "1mb" });
+  app.use(createRequestContextMiddleware());
+  app.use(createRateLimitMiddleware());
+  app.useBodyParser("json", { limit: "1mb", verify: (request, _response, buffer) => { (request as typeof request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer); } });
   app.useBodyParser("urlencoded", { limit: "1mb", extended: true });
   app.use((_request: unknown, response: { setHeader: (name: string, value: string) => void }, next: () => void) => {
     response.setHeader("X-Content-Type-Options", "nosniff");
@@ -32,7 +36,8 @@ async function bootstrap() {
   app.enableCors({
     origin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Authorization", "Content-Type", "x-tenant-id", "x-platform-support-session", "Idempotency-Key"],
+    allowedHeaders: ["Authorization", "Content-Type", "x-tenant-id", "x-platform-support-session", "Idempotency-Key", "x-request-id"],
+    exposedHeaders: ["Retry-After", "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset", "X-Request-Id"],
     credentials: false,
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }));

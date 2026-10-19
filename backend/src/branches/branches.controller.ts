@@ -4,6 +4,7 @@ import { IsBoolean, IsOptional, IsString, Length } from "class-validator";
 import { AuthGuard, TenantGuard, PermissionGuard, RequirePermissions } from "../common/guards";
 import { AuthenticatedRequest } from "../common/interfaces";
 import { PaginationDto } from "../common/dto/pagination.dto";
+import { BulkRecordIdsDto } from "../common/dto/bulk-record-ids.dto";
 import { BranchesService } from "./branches.service";
 
 class CreateBranchDto {
@@ -36,6 +37,13 @@ export class BranchesController {
   @ApiOperation({ summary: "List branches" })
   findAll(@Req() req: AuthenticatedRequest, @Query() query: PaginationDto) {
     return this.service.findAll(req.tenantId, query);
+  }
+
+  @Post("bulk/deactivate")
+  @RequirePermissions("branches.delete")
+  @ApiOperation({ summary: "Deactivate up to 100 branches in the current tenant" })
+  bulkDeactivate(@Req() req: AuthenticatedRequest, @Body() body: BulkRecordIdsDto) {
+    return this.service.bulkDeactivate(req.tenantId, req.user.sub, body.ids);
   }
 
   @Get(":id")

@@ -5,6 +5,7 @@ import { Type } from "class-transformer";
 import { AuthGuard, TenantGuard, PermissionGuard, RequirePermissions } from "../common/guards";
 import { AuthenticatedRequest } from "../common/interfaces";
 import { PaginationDto } from "../common/dto/pagination.dto";
+import { BulkRecordIdsDto } from "../common/dto/bulk-record-ids.dto";
 import { MembersService } from "./members.service";
 
 class InviteMemberDto {
@@ -66,6 +67,13 @@ export class MembersController {
     @Query("search") search?: string,
   ) {
     return this.service.findAll(req.tenantId, query, search);
+  }
+
+  @Post("bulk/deactivate")
+  @RequirePermissions("members.delete")
+  @ApiOperation({ summary: "Deactivate up to 100 members with the normal self and owner protections" })
+  bulkDeactivate(@Req() req: AuthenticatedRequest, @Body() body: BulkRecordIdsDto) {
+    return this.service.bulkDeactivate(req.tenantId, body.ids, req.user.sub);
   }
 
   @Get(":id")

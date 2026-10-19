@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, HttpException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
 import { PaginationDto, paginate } from "../common/dto/pagination.dto";
 import { AuthService } from "../auth/auth.service";
@@ -97,6 +98,7 @@ export class MembersService {
     const invitationExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     const invitationRequiresPassword = !user;
     const membership = await this.prisma.$transaction(async (tx) => {
+      await this.assertSeatCapacity(tx, tenantId, 1);
       // Create user if doesn't exist
       if (!user) {
         const tempPassword = randomBytes(16).toString("hex");
@@ -177,6 +179,7 @@ export class MembersService {
     const prepared = await Promise.all(users.map(async (user) => ({ ...user, passwordHash: await this.auth.hashPassword(user.password) })));
 
     const members = await this.prisma.$transaction(async (tx) => {
+      await this.assertSeatCapacity(tx, tenantId, prepared.length);
       const created: object[] = [];
       for (const user of prepared) {
         const account = await tx.user.create({
@@ -196,6 +199,22 @@ export class MembersService {
       return created;
     });
     return { createdCount: members.length, members };
+  }
+
+  private async assertSeatCapacity(tx: Prisma.TransactionClient, tenantId: string, requested: number) {
+    await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM tenants WHERE id = ${tenantId}::uuid FOR UPDATE`;
+    const [used, subscription] = await Promise.all([
+      tx.tenantMembership.count({ where: { tenantId, status: { in: ["ACTIVE", "INVITED"] } } }),
+      tx.subscription.findUnique({ where: { tenantId }, select: { status: true, plan: { select: { features: { where: { feature: "max_users" }, select: { value: true } } } } } }),
+    ]);
+    const configuredDefault = Number(process.env.DEFAULT_INCLUDED_USERS ?? 10);
+    const fallbackLimit = Number.isSafeInteger(configuredDefault) && configuredDefault > 0 ? configuredDefault : 10;
+    const featureValue = Number(subscription?.plan.features[0]?.value);
+    const paidPlanActive = subscription && ["ACTIVE", "TRIALING"].includes(subscription.status);
+    const limit = paidPlanActive && Number.isSafeInteger(featureValue) && featureValue > 0 ? featureValue : fallbackLimit;
+    if (used + requested > limit) {
+      throw new HttpException(`This workspace has ${used} of ${limit} user seats in use. Choose a higher plan in Billing & plan before adding more users.`, 402);
+    }
   }
 
   private async validateRoles(tenantId: string, roleIds: string[], actorPermissions: string[]) {
@@ -247,13 +266,16 @@ export class MembersService {
     if (data.status) updateData.status = data.status;
     if (data.branchId !== undefined) updateData.branchId = data.branchId;
 
-    const membership = await this.prisma.tenantMembership.update({
-      where: { id },
-      data: updateData,
-      include: {
-        user: { select: { id: true, fullName: true, email: true } },
-        membershipRoles: { include: { role: { select: { id: true, name: true } } } },
-      },
+    const membership = await this.prisma.$transaction(async tx => {
+      if (["ACTIVE", "INVITED"].includes(data.status ?? "") && !["ACTIVE", "INVITED"].includes(member.status)) await this.assertSeatCapacity(tx, tenantId, 1);
+      return tx.tenantMembership.update({
+        where: { id },
+        data: updateData,
+        include: {
+          user: { select: { id: true, fullName: true, email: true } },
+          membershipRoles: { include: { role: { select: { id: true, name: true } } } },
+        },
+      });
     });
     return stripInvitationSecrets(membership);
   }
@@ -306,6 +328,23 @@ export class MembersService {
       },
     });
     return stripInvitationSecrets(membership);
+  }
+
+  async bulkDeactivate(tenantId: string, ids: string[], currentUserId: string) {
+    let deactivatedCount = 0;
+    const skipped: string[] = [];
+    for (const id of ids) {
+      try {
+        const member = await this.deactivate(tenantId, id, currentUserId);
+        await this.prisma.auditLog.create({ data: { tenantId, actorId: currentUserId, action: "members.deactivated", targetType: "tenant_membership", targetId: id, metadata: { source: "bulk_action" } } });
+        if (member.status === "INACTIVE") deactivatedCount += 1;
+      } catch (error) {
+        if (!(error instanceof HttpException)) throw error;
+        // Keep processing; self-deactivation, last-owner, and unknown IDs stay protected.
+        skipped.push(id);
+      }
+    }
+    return { deactivatedCount, skippedCount: skipped.length, skipped };
   }
 }
 

@@ -50,6 +50,7 @@ export function middleware(request: NextRequest) {
   const isAuthPage = path === "/login" || path === "/register";
   const isPublicTrackingPage = path === "/track";
   const isInvitationPage = path === "/accept-invitation";
+  const isPublicAsset = path === "/image.jpg";
   const hasSession = Boolean(request.cookies.get("lms_session")?.value);
   const hasTenant = Boolean(request.cookies.get("lms_tenant")?.value);
   const isPlatformAdmin = request.cookies.get("lms_platform_admin")?.value === "1";
@@ -57,7 +58,7 @@ export function middleware(request: NextRequest) {
 
   if (!isApi && path.startsWith("/platform") && (!hasSession || !isPlatformAdmin)) {
     response = NextResponse.redirect(new URL("/login", request.url));
-  } else if (!isApi && !path.startsWith("/platform") && !isAuthPage && !isPublicTrackingPage && !isInvitationPage && (!hasSession || !hasTenant)) {
+  } else if (!isApi && !path.startsWith("/platform") && !isAuthPage && !isPublicTrackingPage && !isInvitationPage && !isPublicAsset && (!hasSession || !hasTenant)) {
     response = NextResponse.redirect(new URL("/login", request.url));
   } else {
     response = NextResponse.next({ request: { headers: requestHeaders } });

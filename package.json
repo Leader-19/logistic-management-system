@@ -15,7 +15,9 @@
                     "db:migrate":  "npm --workspace @lms/api exec prisma migrate dev",
                     "db:generate":  "npm --workspace @lms/api exec prisma generate",
                     "db:seed":  "node backend/scripts/seed-demo.cjs",
-                    "platform:admin:create":  "node backend/scripts/create-platform-admin.cjs"
+                    "platform:admin:create": "node backend/scripts/create-platform-admin.cjs",
+                    "test":  "npm --workspace @lms/api test",
+                    "test:e2e": "npm --workspace @lms/web run test:e2e"
                 },
     "devDependencies":  {
                             "concurrently":  "^9.1.2"

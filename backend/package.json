@@ -6,7 +6,8 @@
         "start:dev": "nest start --watch",
         "build": "nest build",
         "start": "node dist/main",
-        "dev": "nest start --watch"
+        "dev": "nest start --watch",
+        "test": "node --experimental-strip-types --test test/rate-limit.middleware.spec.mjs test/request-context.middleware.spec.mjs test/api-retry.spec.mjs test/idempotency.utils.spec.mjs"
     },
     "dependencies": {
         "@nestjs/common": "^10.4.15",

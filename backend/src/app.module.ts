@@ -1,4 +1,5 @@
-﻿import { Module } from "@nestjs/common";
+import { Module } from "@nestjs/common";
+import { APP_INTERCEPTOR } from "@nestjs/core";
 import { PrismaModule } from "./common/prisma.service";
 import { AuthModule } from "./auth/auth.module";
 import { HealthModule } from "./health/health.module";
@@ -17,6 +18,9 @@ import { WarehouseModule } from "./warehouse/warehouse.module";
 import { FleetModule } from "./fleet/fleet.module";
 import { ReportsModule } from "./reports/reports.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { PackagingModule } from "./packaging/packaging.module";
+import { SupplyChainModule } from "./supply-chain/supply-chain.module";
+import { IdempotencyInterceptor } from "./common/idempotency.interceptor";
 
 @Module({
   imports: [
@@ -36,9 +40,12 @@ import { NotificationsModule } from "./notifications/notifications.module";
     FleetModule,        // Tenant fleet records
     ReportsModule,      // Tenant summary reporting
     NotificationsModule,
+    PackagingModule,
+    SupplyChainModule,
     AuditModule,        // Audit log viewer
     PlatformModule,     // Platform administration and audited tenant support sessions
   ],
+  providers: [{ provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor }],
 })
 export class AppModule {}
 

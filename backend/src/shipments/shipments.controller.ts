@@ -1,11 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { ShipmentStatus } from "@prisma/client";
-import { IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Min } from "class-validator";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Min, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { AuthGuard, TenantGuard, PermissionGuard, RequirePermissions } from "../common/guards";
 import { AuthenticatedRequest } from "../common/interfaces";
 import { PaginationDto } from "../common/dto/pagination.dto";
+import { BulkRecordIdsDto } from "../common/dto/bulk-record-ids.dto";
 import { ShipmentsService } from "./shipments.service";
 
 class CreateShipmentDto {
@@ -22,6 +23,11 @@ class CreateShipmentDto {
   @IsOptional() @Type(() => Number) @IsNumber() heightCm?: number;
   @IsOptional() @IsString() serviceType?: string;
   @IsOptional() @IsString() notes?: string;
+}
+
+class BatchCreateShipmentsDto {
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({ each: true }) @Type(() => CreateShipmentDto)
+  shipments!: CreateShipmentDto[];
 }
 
 class UpdateShipmentDto {
@@ -68,9 +74,9 @@ export class ShipmentsController {
 
   @Get("mine")
   @RequirePermissions("shipments.read")
-  @ApiOperation({ summary: "List shipments assigned to the current driver" })
-  myAssigned(@Req() req: AuthenticatedRequest) {
-    return this.service.myAssignedShipments(req.tenantId, req.user.sub);
+  @ApiOperation({ summary: "List active delivery assignments; drivers only receive their own" })
+  myAssigned(@Req() req: AuthenticatedRequest, @Query() pagination: PaginationDto) {
+    return this.service.myAssignedShipments(req.tenantId, req.user.sub, pagination);
   }
 
   @Get()
@@ -98,9 +104,26 @@ export class ShipmentsController {
 
   @Post()
   @RequirePermissions("shipments.create")
+  @ApiHeader({ name: "Idempotency-Key", required: true, description: "Reuse this key if retrying the same shipment creation request" })
   @ApiOperation({ summary: "Create a shipment" })
   create(@Req() req: AuthenticatedRequest, @Body() body: CreateShipmentDto) {
     return this.service.create(req.tenantId, req.user.sub, body);
+  }
+
+  @Post("batch")
+  @RequirePermissions("shipments.create")
+  @ApiHeader({ name: "Idempotency-Key", required: true })
+  @ApiOperation({ summary: "Create up to 100 shipments with row-level results" })
+  createBatch(@Req() req: AuthenticatedRequest, @Body() body: BatchCreateShipmentsDto) {
+    return this.service.createBatch(req.tenantId, req.user.sub, body.shipments);
+  }
+
+  @Post("batch/cancel")
+  @RequirePermissions("shipments.cancel")
+  @ApiHeader({ name: "Idempotency-Key", required: true })
+  @ApiOperation({ summary: "Cancel up to 100 shipments through the normal state transition workflow" })
+  cancelBatch(@Req() req: AuthenticatedRequest, @Body() body: BulkRecordIdsDto) {
+    return this.service.cancelBatch(req.tenantId, body.ids, req.user.sub);
   }
 
   @Patch(":id")
@@ -112,6 +135,7 @@ export class ShipmentsController {
 
   @Post(":id/events")
   @RequirePermissions("tracking.create")
+  @ApiHeader({ name: "Idempotency-Key", required: true })
   @ApiOperation({ summary: "Add a tracking event / status transition" })
   addEvent(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: CreateEventDto) {
     return this.service.addEvent(req.tenantId, id, req.user.sub, body);
@@ -119,6 +143,7 @@ export class ShipmentsController {
 
   @Patch(":id/assignment")
   @RequirePermissions("shipments.assign")
+  @ApiHeader({ name: "Idempotency-Key", required: true })
   @ApiOperation({ summary: "Assign a tenant driver to a shipment" })
   assignDriver(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: AssignDriverDto) {
     return this.service.assignDriver(req.tenantId, id, body.driverId, req.user.sub);
@@ -126,6 +151,7 @@ export class ShipmentsController {
 
   @Post(":id/deliver")
   @RequirePermissions("delivery.proof.create")
+  @ApiHeader({ name: "Idempotency-Key", required: true })
   @ApiOperation({ summary: "Record proof of delivery and complete a shipment" })
   deliver(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: ProofOfDeliveryDto) {
     return this.service.deliver(req.tenantId, id, req.user.sub, body);
@@ -133,6 +159,7 @@ export class ShipmentsController {
 
   @Post(":id/cancel")
   @RequirePermissions("shipments.cancel")
+  @ApiHeader({ name: "Idempotency-Key", required: true })
   @ApiOperation({ summary: "Cancel a shipment" })
   cancel(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
     return this.service.cancel(req.tenantId, id, req.user.sub);

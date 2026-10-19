@@ -60,5 +60,15 @@ export class BranchesService {
     if (!branch) throw new NotFoundException("Branch not found");
     return this.prisma.branch.update({ where: { id }, data: { isActive: false } });
   }
+
+  async bulkDeactivate(tenantId: string, actorId: string, ids: string[]) {
+    return this.prisma.$transaction(async tx => {
+      const active = await tx.branch.findMany({ where: { tenantId, id: { in: ids }, isActive: true }, select: { id: true } });
+      if (!active.length) return { deactivatedCount: 0 };
+      const changed = await tx.branch.updateMany({ where: { tenantId, id: { in: active.map(branch => branch.id) }, isActive: true }, data: { isActive: false } });
+      await tx.auditLog.createMany({ data: active.map(branch => ({ tenantId, actorId, action: "branches.deactivated", targetType: "branch", targetId: branch.id, metadata: { source: "bulk_action" } })) });
+      return { deactivatedCount: changed.count };
+    });
+  }
 }
 

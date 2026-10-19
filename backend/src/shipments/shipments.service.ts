@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, ShipmentStatus } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { PrismaService } from "../common/prisma.service";
@@ -158,17 +158,49 @@ export class ShipmentsService {
     });
   }
 
+  async createBatch(tenantId: string, actorId: string, shipments: Array<{
+    customerId: string; senderName: string; senderPhone?: string; senderAddress?: string;
+    recipientName: string; recipientPhone?: string; recipientAddress: string;
+    weightGrams: number; lengthCm?: number; widthCm?: number; heightCm?: number;
+    serviceType?: string; notes?: string;
+  }>) {
+    const results: { row: number; shipment?: unknown; error?: string }[] = [];
+    for (const [index, shipment] of shipments.entries()) {
+      try {
+        results.push({ row: index + 1, shipment: await this.create(tenantId, actorId, shipment) });
+      } catch (cause) {
+        results.push({ row: index + 1, error: cause instanceof Error ? cause.message : "Could not create shipment" });
+      }
+    }
+    const created = results.filter(result => result.shipment).length;
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId,
+        actorId,
+        action: "shipments.batch_created",
+        targetType: "shipment_batch",
+        metadata: { attempted: shipments.length, created, failed: shipments.length - created },
+      },
+    });
+    return { created, failed: shipments.length - created, results };
+  }
+
   async update(tenantId: string, id: string, data: {
     senderName?: string; senderPhone?: string; senderAddress?: string;
     recipientName?: string; recipientPhone?: string; recipientAddress?: string;
     weightGrams?: number; serviceType?: string; notes?: string;
   }) {
-    const shipment = await this.prisma.shipment.findFirst({ where: { id, tenantId } });
+    const shipment = await this.prisma.shipment.findFirst({ where: { id, tenantId }, select: { id: true, status: true, updatedAt: true } });
     if (!shipment) throw new NotFoundException("Shipment not found");
     if (shipment.status !== ShipmentStatus.BOOKED)
       throw new BadRequestException("Can only edit shipments in BOOKED status");
 
-    return this.prisma.shipment.update({ where: { id }, data });
+    const updated = await this.prisma.shipment.updateMany({
+      where: { id, tenantId, status: ShipmentStatus.BOOKED, updatedAt: shipment.updatedAt },
+      data,
+    });
+    if (!updated.count) throw new ConflictException("Shipment changed while you were editing it; refresh and try again");
+    return this.prisma.shipment.findFirstOrThrow({ where: { id, tenantId } });
   }
 
   async listDrivers(tenantId: string) {
@@ -180,19 +212,28 @@ export class ShipmentsService {
     return memberships.map(({ userId, user }) => ({ id: userId, fullName: user.fullName, phone: user.phone }));
   }
 
-  async myAssignedShipments(tenantId: string, userId: string) {
-    const membership = await this.prisma.tenantMembership.findFirst({ where: { tenantId, userId, status: "ACTIVE", membershipRoles: { some: { role: { name: "Driver" } } } }, select: { id: true } });
-    if (!membership) throw new ForbiddenException("This page is available to active Driver-role members");
-    return this.prisma.shipment.findMany({
-      where: { tenantId, assignedDriverId: userId, status: { notIn: [ShipmentStatus.DELIVERED, ShipmentStatus.CANCELLED, ShipmentStatus.RETURNED] } },
-      select: { id: true, trackingNumber: true, status: true, recipientName: true, recipientPhone: true, recipientAddress: true, events: { orderBy: { sequence: "desc" }, take: 1, select: { occurredAt: true, note: true } } },
-      orderBy: { updatedAt: "asc" },
+  async myAssignedShipments(tenantId: string, userId: string, pagination: PaginationDto) {
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { tenantId, userId, status: "ACTIVE" },
+      select: { membershipRoles: { select: { role: { select: { name: true } } } } },
     });
+    if (!membership) throw new ForbiddenException("An active tenant membership is required to view deliveries");
+    const isDriver = membership.membershipRoles.some(({ role }) => role.name === "Driver");
+    const where: Prisma.ShipmentWhereInput = { tenantId, ...(isDriver ? { assignedDriverId: userId } : {}), status: { notIn: [ShipmentStatus.DELIVERED, ShipmentStatus.CANCELLED, ShipmentStatus.RETURNED] } };
+    const [data, total] = await Promise.all([
+      this.prisma.shipment.findMany({
+        where,
+        select: { id: true, trackingNumber: true, status: true, recipientName: true, recipientPhone: true, recipientAddress: true, events: { orderBy: { sequence: "desc" }, take: 1, select: { occurredAt: true, note: true } } },
+        orderBy: { updatedAt: "asc" }, skip: pagination.skip, take: pagination.limit,
+      }),
+      this.prisma.shipment.count({ where }),
+    ]);
+    return paginate(data, total, pagination);
   }
 
   async assignDriver(tenantId: string, shipmentId: string, driverId: string, actorId: string) {
     const [shipment, driver] = await Promise.all([
-      this.prisma.shipment.findFirst({ where: { id: shipmentId, tenantId }, select: { id: true, status: true } }),
+      this.prisma.shipment.findFirst({ where: { id: shipmentId, tenantId }, select: { id: true, status: true, assignedDriverId: true } }),
       this.prisma.tenantMembership.findFirst({
         where: { tenantId, userId: driverId, status: "ACTIVE", membershipRoles: { some: { role: { name: "Driver" } } } },
         select: { user: { select: { fullName: true } } },
@@ -204,7 +245,10 @@ export class ShipmentsService {
       throw new BadRequestException("A driver can only be assigned before collection");
     }
     await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.shipment.updateMany({ where: { id: shipmentId, tenantId, status: shipment.status }, data: { assignedDriverId: driverId } });
+      const updated = await tx.shipment.updateMany({
+        where: { id: shipmentId, tenantId, status: shipment.status, assignedDriverId: shipment.assignedDriverId },
+        data: { assignedDriverId: driverId },
+      });
       if (!updated.count) throw new ConflictException("Shipment changed while assigning the driver; refresh and try again");
       await tx.auditLog.create({ data: { tenantId, actorId, action: "shipment.driver.assigned", targetType: "shipment", targetId: shipmentId, metadata: { driverId, driverName: driver.user.fullName } } });
     });
@@ -297,6 +341,22 @@ export class ShipmentsService {
       status: ShipmentStatus.CANCELLED,
       note: "Shipment cancelled",
     });
+  }
+
+  async cancelBatch(tenantId: string, ids: string[], actorId: string) {
+    const canceled: string[] = [];
+    const skipped: Array<{ id: string; reason: string }> = [];
+    for (const id of ids) {
+      try {
+        await this.cancel(tenantId, id, actorId);
+        canceled.push(id);
+      } catch (error) {
+        if (!(error instanceof HttpException)) throw error;
+        skipped.push({ id, reason: error.message });
+      }
+    }
+    await this.prisma.auditLog.create({ data: { tenantId, actorId, action: "shipments.batch_cancelled", targetType: "shipment_batch", metadata: { attempted: ids.length, canceled: canceled.length, skipped: skipped.length } } });
+    return { canceledCount: canceled.length, skippedCount: skipped.length, canceled, skipped };
   }
 
   /** Public tracking — returns limited fields only */
